@@ -1,25 +1,139 @@
-﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-
-<html xmlns="http://www.w3.org/1999/xhtml">
+<!doctype html>
+<html lang="en">
 <head>
-<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.js"></script>
-<script type="text/javascript" src="Api.js"></script>
-<script type="text/javascript">
-    $(window).ready(function () {
-        API.setIncomplete();
-        $("#lblLessonLocation").html(API.getLessonLocation());
-    });
-</script>
-<style>
-    #apiLog { border: 1px solid gainsboro; font-family: Arial; font-size:x-small; margin-top:20px; padding: 10px 10px 10px 10px;}
-    
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AICC URL Test (Oracle OLC)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; line-height: 1.4; }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    .muted { color:#666; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .pill { display:inline-block; border:1px solid #ddd; padding:6px 10px; border-radius:999px; font-size:14px; }
+    code { background:#f6f8fa; padding:2px 6px; border-radius:6px; }
+    button { border: 1px solid #ddd; background:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; }
+    button:hover { background:#f6f8fa; }
+    .ok { color:#0a7; font-weight:600; }
+    .warn { color:#b60; font-weight:600; }
+    pre { background:#0b1020; color:#dbe5ff; padding:12px; border-radius:12px; overflow:auto; }
+  </style>
 </head>
 <body>
-Lesson Location (bookmark): <span id="lblLessonLocation"></span><br/>
-<input type="button" value="Save current time to LMS as bookmark" onclick="API.setLessonLocation(new Date().toString())"/><br />
-<input type="button" value="Set LMS to Passed" onclick="API.setPassed();$('input[type=button]').attr('disabled', 'disabled');"/><br />
-<input type="button" value="Set LMS to Failed" onclick="API.setFailed();$('input[type=button]').attr('disabled', 'disabled');"/><br />
-<input type="button" value="Set LMS to Complete" onclick="API.setCompleted();$('input[type=button]').attr('disabled', 'disabled');"/><br />
+<div class="wrap">
+  <h1>AICC URL Test (Oracle Learning Cloud)</h1>
+  <p class="muted">
+    This page expects Oracle to launch it with <code>aicc_sid</code> and <code>aicc_url</code>.
+    It posts completion via AICC HACP (<code>PutParam</code> then <code>ExitAU</code>) using a hidden iframe.
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <span class="pill">sid: <code id="sid">—</code></span>
+      <span class="pill">url: <code id="url">—</code></span>
+      <span class="pill">status: <span id="status" class="warn">not launched by LMS</span></span>
+    </div>
+
+    <p class="muted" style="margin-top:12px">
+      If you open this directly in a browser (no LMS), it will NOT post and you will NOT get 405 errors.
+      In Oracle, these values should be populated.
+    </p>
+
+    <div class="row" style="margin-top:12px">
+      <button id="complete">Mark Complete</button>
+      <button id="passed">Mark Passed</button>
+      <button id="failed">Mark Failed</button>
+    </div>
+
+    <h3 style="margin-top:16px">Debug</h3>
+    <pre id="log">Waiting…</pre>
+  </div>
+
+  <iframe name="aicc_iframe" style="display:none"></iframe>
+  <form id="aiccForm" method="POST" target="aicc_iframe" style="display:none">
+    <input name="aicc_sid" id="aicc_sid" />
+    <input name="aicc_command" id="aicc_command" />
+    <textarea name="aicc_data" id="aicc_data"></textarea>
+  </form>
+</div>
+
+<script>
+(function () {
+  // Case-insensitive query param getter (Oracle/LMSs may use AICC_URL/AICC_SID)
+  function getParamCI(name) {
+    const want = name.toLowerCase();
+    const sp = new URLSearchParams(window.location.search);
+    for (const [k, v] of sp.entries()) {
+      if ((k || "").toLowerCase() === want) return v || "";
+    }
+    return "";
+  }
+
+  const aicc_sid = getParamCI("aicc_sid");
+  const aicc_url = getParamCI("aicc_url");
+
+  document.getElementById("sid").textContent = aicc_sid || "—";
+  document.getElementById("url").textContent = aicc_url || "—";
+
+  const statusEl = document.getElementById("status");
+  const logEl = document.getElementById("log");
+
+  function log(msg) { logEl.textContent = msg; }
+
+  function postAICC(command, data) {
+    if (!aicc_sid || !aicc_url) {
+      log("Missing aicc_sid/aicc_url. This is expected when opened directly. Launch from Oracle to test tracking.");
+      return false;
+    }
+    const form = document.getElementById("aiccForm");
+    form.action = aicc_url;
+    document.getElementById("aicc_sid").value = aicc_sid;
+    document.getElementById("aicc_command").value = command;
+    document.getElementById("aicc_data").value = data || "";
+    form.submit();
+    return true;
+  }
+
+  function payload(status) {
+    // Minimal AICC INI payload
+    return "[CORE]\n" +
+           "Lesson_Status=" + status + "\n" +
+           "Score=0\n" +
+           "Time=00:00:10\n";
+  }
+
+  function send(status) {
+    statusEl.textContent = "sending…";
+    statusEl.className = "warn";
+    log("Posting PutParam (" + status + "), then ExitAU…");
+    const ok = postAICC("PutParam", payload(status));
+    if (!ok) {
+      statusEl.textContent = "not launched by LMS";
+      statusEl.className = "warn";
+      return;
+    }
+    setTimeout(() => {
+      postAICC("ExitAU", "");
+      statusEl.textContent = "sent";
+      statusEl.className = "ok";
+      log("Sent PutParam + ExitAU to LMS endpoint. Return to Oracle and refresh the attempt status.");
+    }, 800);
+  }
+
+  document.getElementById("complete").addEventListener("click", () => send("completed"));
+  document.getElementById("passed").addEventListener("click", () => send("passed"));
+  document.getElementById("failed").addEventListener("click", () => send("failed"));
+
+  if (aicc_sid && aicc_url) {
+    statusEl.textContent = "launched by LMS";
+    statusEl.className = "ok";
+    // Optional: ping GetParam (response not read due to cross-origin)
+    postAICC("GetParam", "");
+    log("Detected aicc_sid/aicc_url. Sent GetParam (response not read). Use buttons to post completion.");
+  } else {
+    log("Open inside Oracle Learning Cloud (AICC URL) to see sid/url populated.");
+  }
+})();
+</script>
 </body>
 </html>
