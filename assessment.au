@@ -1,2 +1,8 @@
-"system_id","type","command_line","Max_Time_Allowed","time_limit_action","file_name","max_score","mastery_score","system_vendor","core_vendor","web_launch","au_password"
-"A1","","","00:00:00","C,N","default.htm",100,,"","","",""
+[Assignable_Unit]
+AU_ID=A1
+AU_Title=UniversitySite AICC Testing Tool
+File_Name=default.htm
+Type=web
+Max_Time_Allowed=00:00:00
+Time_Limit_Action=exit,message
+Mastery_Score=0

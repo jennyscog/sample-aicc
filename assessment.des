@@ -1,2 +1,4 @@
-"system_id","developer_id","title","description"
-"A1","1","Title","Description"
+[Descriptor]
+System_ID=AICC_URL_TEST
+Developer_ID=AI Collab x OpenAI
+Description=AICC URL launch test content for Oracle Learning Cloud. Launches default.htm and posts completion via HACP.
